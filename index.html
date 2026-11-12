@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>暗唱例文道場 第９章 分詞②</title>
+<style>
+:root{
+  --bg:#f4f6f8;
+  --card:#ffffff;
+  --ink:#1f2937;
+  --muted:#6b7280;
+  --accent:#2c3e50;
+  --ok:#0f766e;
+  --ng:#b91c1c;
+  --shadow:0 2px 10px rgba(0,0,0,.08);
+}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;
+  background:var(--bg);
+  margin:0;
+}
+
+/* header は普通に閉じる */
+header{
+  background:var(--accent);
+  color:#fff;
+  padding:18px;
+  text-align:center;
+}
+
+/* .sp-only は header の外で定義 */
+.sp-only{ display:none; }
+@media (max-width:480px){
+  .sp-only{ display:inline; }
+}
+
+.wrap{
+  max-width:860px;
+  margin:20px auto;
+  padding:0 12px;
+}
+
+/* 2列グリッド固定（= 2列3行になる） */
+.menu{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin:14px 0 16px;
+  align-items:stretch;
+}
+
+.btn{
+  width:100%;
+  padding:14px 14px;
+  font-size:15px;
+  border:none;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:var(--shadow);
+  cursor:pointer;
+  text-align:center;
+
+  /* ボタンを“押しやすい高さ”に揃える */
+  min-height:56px;
+  line-height:1.3;
+
+  /* 長い文字でも崩れにくくする */
+  white-space:normal;
+  word-break:keep-all;       /* 日本語なら keep-all でもOK */
+}
+
+/* 以下はそのままでOK */
+.card{
+  background:#fff;
+  padding:16px;
+  border-radius:12px;
+  box-shadow:var(--shadow);
+}
+.jp{
+  font-size:18px;
+  margin:12px 0;
+  white-space:pre-wrap;
+}
+.answer-area{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+input{
+  flex:1;
+  padding:12px;
+  font-size:16px;
+}
+.action{
+  padding:12px 14px;
+  background:var(--accent);
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+}
+.result{
+  margin-top:10px;
+}
+.ok{color:var(--ok);}
+.ng{color:var(--ng);}
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:10px;
+}
+th,td{
+  border-bottom:1px solid #ddd;
+  padding:8px;
+}
+th{
+  background:#f3f4f6;
+  text-align:left;
+}
+</style>
+</head>
+<body>
+<header>
+<h1> 暗唱例文道場 <br class="sp-only"> 第９章 分詞② <br> 分詞を使うこと </h1>
+</header>
+
+<div class="wrap">
+<div class="menu">
+<button id="btnSeq" class="btn"></button>
+<button id="btnRand" class="btn">全部ランダム</button>
+<button id="btnWrongRand" class="btn">誤答ランダム</button>
+<button id="btnStats" class="btn">学習記録</button>
+<button id="btnReset" class="btn">記録リセット</button>
+<button id="btnTop" class="btn">トップページ</button>
+</div>
+
+<div id="main" class="card"></div>
+</div>
+
+<script>
+(() => {
+
+const STORAGE_KEY = "AnshoReibun_Grammar_Ch8_1_v1";
+const TOP_URL = "https://daichig-sbmk.github.io/Ansho-Reibun-top/";
+let items = [];
+let byId = new Map();
+let session = null;
+
+function loadStore(){
+  return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"stats":{},"seqIndex":0,"inProgress":{}}');
+}
+function saveStore(s){ localStorage.setItem(STORAGE_KEY,JSON.stringify(s)); }
+
+function statFor(store,id){
+  if(!store.stats[id]) store.stats[id]={wrong:0,seqShown:0,randShown:0};
+  return store.stats[id];
+}
+
+function normalize(s){
+  return s.normalize("NFKC")
+          .replace(/[’‘`]/g,"'")
+          .replace(/[.?\u3002\uFF0E\uFF1F]/g, "")         // ★追加：. ? （全角も）を
+          .replace(/\s+/g," ")
+          .trim()
+          .toLowerCase();
+}
+
+function applyReplacement(text, from, to){
+  if(!from) return text;
+
+  // まずは大文字小文字も含めて完全一致で置換
+  if(text.includes(from)){
+    return text.split(from).join(to);
+  }
+
+  // 大文字小文字だけ違う場合にも対応
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(escaped, "gi"), to);
+}
+
+function parseAltRule(alt){
+  const s = (alt || "").trim();
+  if(!s) return null;
+
+  // 「置き換え元=>置き換え後」の形式なら置換ルールとして扱う
+  if(s.includes("=>")){
+    const parts = s.split("=>");
+    const from = parts.shift().trim();
+    const to = parts.join("=>").trim();
+    return {type:"rule", from, to};
+  }
+
+  // => がない場合は、従来通り「alts に書いた文そのもの」を別解にする
+  return {type:"answer", text:s};
+}
+
+function acceptableAnswers(q){
+  const parsed = q.alts.map(parseAltRule).filter(Boolean);
+  const rules = parsed.filter(x => x.type === "rule");
+  const directAnswers = parsed.filter(x => x.type === "answer").map(x => x.text);
+
+  // 複数の置換ルールがある場合、全組み合わせを作る。
+  // 例：A=>B | C=>D なら、
+  // 元文 / Aだけ置換 / Cだけ置換 / AもCも置換 をすべて正答にする。
+  let generated = [q.model];
+
+  rules.forEach(rule => {
+    const next = [];
+    generated.forEach(ans => {
+      next.push(ans); // このルールを使わないパターン
+      next.push(applyReplacement(ans, rule.from, rule.to)); // このルールを使うパターン
+    });
+    generated = next;
+  });
+
+  return [...new Set([...generated, ...directAnswers].map(normalize))];
+}
+
+async function loadData(){
+  const res=await fetch("grammar.csv",{cache:"no-store"});
+  const buf=await res.arrayBuffer();
+  let text;
+  try{text=new TextDecoder("utf-8",{fatal:true}).decode(buf);}
+  catch{text=new TextDecoder("shift-jis").decode(buf);}
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+
+  const rows=text.split(/\r?\n/).filter(r=>r.trim());
+const delim = rows[0].includes("\t") ? "\t" : ",";
+
+function splitLine(line){
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++){
+    const c = line[i];
+
+    if (inQuotes){
+      if (c === '"'){
+        if (line[i + 1] === '"'){ cur += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        cur += c;
+      }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === delim){ out.push(cur); cur = ""; }
+      else cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+const header = splitLine(rows[0]).map(s => s.trim());
+  const idI=header.indexOf("id");
+  const jpI=header.indexOf("jp");
+  const mI=header.indexOf("model");
+  const aI=header.indexOf("alts");
+
+  for(let i=1;i<rows.length;i++){
+    const cols = splitLine(rows[i]);
+    if(!cols[idI]) continue;
+    const alts=(cols[aI]||"").split("|").filter(Boolean);
+    items.push({id:cols[idI],jp:cols[jpI],model:cols[mI],alts});
+  }
+  byId=new Map(items.map(x=>[x.id,x]));
+}
+
+function updateSeqLabel(){
+  document.getElementById("btnSeq").textContent = "全部順番";
+}
+
+function startSeq(){
+  const store = loadStore();
+  const selected = items.map(x => x.id);
+
+  // 途中記録があり、現在の問題数・内容と一致している場合だけ再開
+  if(store.inProgress?.seq){
+    const savedIds = store.inProgress.seq.ids || [];
+
+    const isSame =
+      savedIds.length === selected.length &&
+      savedIds.every((id, i) => id === selected[i]);
+
+    if(isSame){
+      session = store.inProgress.seq;
+      render();
+      return;
+    }
+  }
+
+  // 問題数や内容が変わっていたら、現在の全問題で最初から開始
+  store.inProgress = {
+    seq:{
+      mode:"seq",
+      ids:selected,
+      idx:0
+    }
+  };
+
+  saveStore(store);
+  session = store.inProgress.seq;
+  render();
+}
+
+function commitSeq(){
+  const store=loadStore();
+  if(!store.inProgress?.seq) return;
+  store.seqIndex=0;
+  store.inProgress.seq=null;
+  saveStore(store);
+}
+
+function startRand(){
+  const store=loadStore();
+  const stats=store.stats||{};
+  const pool=[...items];
+
+  pool.sort((a,b)=>{
+    const sa=stats[a.id]?.randShown||0;
+    const sb=stats[b.id]?.randShown||0;
+    if(sa!==sb) return sa-sb;
+    const wa=stats[a.id]?.wrong>0?0:1;
+    const wb=stats[b.id]?.wrong>0?0:1;
+    if(wa!==wb) return wa-wb;
+    return Math.random()-0.5;
+  });
+
+  const selected=pool.map(x=>x.id);
+
+  selected.forEach(id=>{
+    statFor(store,id).randShown++;
+  });
+  saveStore(store);
+
+  session={mode:"rand",ids:selected,idx:0};
+  render();
+}
+
+function startWrongRand(){
+  const store = loadStore();
+
+  // wrong >= 1 の問題だけ集める
+  const pool = items.filter(x => (store.stats?.[x.id]?.wrong || 0) >= 1);
+
+  if (pool.length === 0) {
+    document.getElementById("main").innerHTML =
+      "学習記録に誤答がまだありません。まず「全部順番」または「全部ランダム」で間違えると出題されます。";
+    return;
+  }
+
+  // 優先：この形式での出題回数が少ない → 同じなら（誤答回数が多い順）→ その上でランダム
+  // ※あなたの最初の仕様に合わせるなら「誤答回数が多い順」を入れるのが自然なので入れてあります
+  // （もしここも「誤答経験あり優先＋ランダム」だけにしたいなら言ってください。すぐ変えます）
+  const randKey = new Map();
+  pool.forEach(x => randKey.set(x.id, Math.random()));
+
+  pool.sort((a,b)=>{
+    const sa = store.stats?.[a.id]?.wrongRandShown || 0;
+    const sb = store.stats?.[b.id]?.wrongRandShown || 0;
+    if (sa !== sb) return sa - sb;
+
+    const wa = store.stats?.[a.id]?.wrong || 0;
+    const wb = store.stats?.[b.id]?.wrong || 0;
+    if (wa !== wb) return wb - wa;
+
+    return (randKey.get(a.id) ?? 0) - (randKey.get(b.id) ?? 0);
+  });
+
+  const selected = pool.map(x => x.id);
+
+  // この形式の出題回数をカウント（学習記録wrongは増やさない）
+  selected.forEach(id => {
+    if (!store.stats) store.stats = {};
+    if (!store.stats[id]) store.stats[id] = { wrong:0, seqShown:0, randShown:0, wrongRandShown:0 };
+    if (typeof store.stats[id].wrongRandShown !== "number") store.stats[id].wrongRandShown = 0;
+    store.stats[id].wrongRandShown++;
+  });
+  saveStore(store);
+
+  session = { mode:"wrongRand", ids:selected, idx:0 };
+  render();
+}
+
+function render(){
+  const main=document.getElementById("main");
+  const q=byId.get(session.ids[session.idx]);
+  main.innerHTML=`
+  <div>進行状況：${session.idx+1}/${session.ids.length}</div>
+  <div class="jp">${q.jp}</div>
+  <div class="answer-area">
+    <input id="ans"
+       autocomplete="off"
+       autocorrect="off"
+       autocapitalize="off"
+       spellcheck="false">
+    <button class="action" id="check">判定</button>
+  </div>
+  <div id="res" class="result"></div>
+  `;
+  document.getElementById("check").onclick=check;
+const ans = document.getElementById("ans");
+ans.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();   // ← ここを追加
+    document.getElementById("check").click();
+  }
+});
+setTimeout(() => ans.focus(), 0);
+}
+
+function check(){
+  const store=loadStore();
+  const id=session.ids[session.idx];
+  const q=byId.get(id);
+  const user=normalize(document.getElementById("ans").value);
+
+  const accept=acceptableAnswers(q);
+  const ok=accept.includes(user);
+  if(!ok){
+    statFor(store,id).wrong++;
+    saveStore(store);
+  }
+const altsText = (q.alts && q.alts.length)
+  ? `<div style="font-size:13px; color:#6b7280; margin-top:6px;">別解：${q.alts.join(" / ")}</div>`
+  : "";
+
+document.getElementById("res").innerHTML=
+  `<div class="${ok?"ok":"ng"}">${ok?"正解":"不正解"}</div>
+   <div>模範解答：${q.model}</div>
+   ${altsText}
+   <button class="action" id="nextBtn" onclick="nextQ()">次へ</button>`;
+
+const nextBtn = document.getElementById("nextBtn");
+
+// 今押したEnter（判定に使ったEnter）が「次へ」にも効かないように、次のイベントから有効化
+setTimeout(() => {
+  nextBtn.focus();
+  nextBtn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      nextBtn.click();
+    }
+  }, { once: true });
+}, 0);
+}
+
+window.nextQ=function(){
+  session.idx++;
+  if(session.idx>=session.ids.length){
+    if(session.mode==="seq") commitSeq();
+    session=null;
+    document.getElementById("main").innerHTML="終了しました。";
+    updateSeqLabel();
+    return;
+  }
+  render();
+}
+
+function renderStats(){
+  const store=loadStore();
+  const rows=items
+    .map(x=>({jp:x.jp,model:x.model,wrong:store.stats[x.id]?.wrong||0}))
+    .filter(x=>x.wrong>0)
+    .sort((a,b)=>b.wrong-a.wrong);
+
+  if(rows.length===0){
+    document.getElementById("main").innerHTML="記録なし";
+    return;
+  }
+
+  document.getElementById("main").innerHTML=`
+  <table>
+  <tr><th>回</th><th>英語</th><th>日本語</th></tr>
+  ${rows.map(r=>`<tr><td>${r.wrong}</td><td>${r.model}</td><td>${r.jp}</td></tr>`).join("")}
+  </table>`;
+}
+
+document.getElementById("btnSeq").onclick=startSeq;
+document.getElementById("btnRand").onclick=startRand;
+document.getElementById("btnWrongRand").onclick = startWrongRand;
+document.getElementById("btnStats").onclick=renderStats;
+document.getElementById("btnReset").onclick=()=>{
+  if(confirm("このページの記録をすべてリセットしますか？")){
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  }
+};
+document.getElementById("btnTop").onclick=()=>location.href=TOP_URL;
+
+(async function(){
+  await loadData();
+  updateSeqLabel();
+})();
+})();
+</script>
+</body>
+</html>
