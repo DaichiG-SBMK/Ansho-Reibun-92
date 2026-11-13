@@ -141,11 +141,12 @@ th{
 <script>
 (() => {
 
-const STORAGE_KEY = "AnshoReibun_Grammar_Ch8_1_v1";
+const STORAGE_KEY = "AnshoReibun_Grammar_Ch9_2_v2";
 const TOP_URL = "https://daichig-sbmk.github.io/Ansho-Reibun-top/";
 let items = [];
 let byId = new Map();
 let session = null;
+let answeredCurrent = false;
 
 function loadStore(){
   return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"stats":{},"seqIndex":0,"inProgress":{}}');
@@ -330,11 +331,6 @@ function startRand(){
 
   const selected=pool.map(x=>x.id);
 
-  selected.forEach(id=>{
-    statFor(store,id).randShown++;
-  });
-  saveStore(store);
-
   session={mode:"rand",ids:selected,idx:0};
   render();
 }
@@ -371,20 +367,12 @@ function startWrongRand(){
 
   const selected = pool.map(x => x.id);
 
-  // この形式の出題回数をカウント（学習記録wrongは増やさない）
-  selected.forEach(id => {
-    if (!store.stats) store.stats = {};
-    if (!store.stats[id]) store.stats[id] = { wrong:0, seqShown:0, randShown:0, wrongRandShown:0 };
-    if (typeof store.stats[id].wrongRandShown !== "number") store.stats[id].wrongRandShown = 0;
-    store.stats[id].wrongRandShown++;
-  });
-  saveStore(store);
-
   session = { mode:"wrongRand", ids:selected, idx:0 };
   render();
 }
 
 function render(){
+  answeredCurrent = false;
   const main=document.getElementById("main");
   const q=byId.get(session.ids[session.idx]);
   main.innerHTML=`
@@ -412,6 +400,8 @@ setTimeout(() => ans.focus(), 0);
 }
 
 function check(){
+  if(answeredCurrent || !session) return;
+  answeredCurrent = true;
   const store=loadStore();
   const id=session.ids[session.idx];
   const q=byId.get(id);
@@ -419,10 +409,14 @@ function check(){
 
   const accept=acceptableAnswers(q);
   const ok=accept.includes(user);
-  if(!ok){
-    statFor(store,id).wrong++;
-    saveStore(store);
-  }
+  const stat = statFor(store,id);
+  if(!ok) stat.wrong++;
+  if(session.mode === "seq") stat.seqShown++;
+  if(session.mode === "rand") stat.randShown++;
+  if(session.mode === "wrongRand") stat.wrongRandShown = (stat.wrongRandShown || 0) + 1;
+  saveStore(store);
+  document.getElementById("check").disabled = true;
+  document.getElementById("ans").disabled = true;
 const altsText = (q.alts && q.alts.length)
   ? `<div style="font-size:13px; color:#6b7280; margin-top:6px;">別解：${q.alts.join(" / ")}</div>`
   : "";
@@ -448,7 +442,15 @@ setTimeout(() => {
 }
 
 window.nextQ=function(){
+  if(!session || !answeredCurrent) return;
   session.idx++;
+  if(session.mode === "seq"){
+    const store=loadStore();
+    if(store.inProgress?.seq){
+      store.inProgress.seq.idx=session.idx;
+      saveStore(store);
+    }
+  }
   if(session.idx>=session.ids.length){
     if(session.mode==="seq") commitSeq();
     session=null;
