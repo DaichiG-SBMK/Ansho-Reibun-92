@@ -1,13 +1,13 @@
 id,jp,model,alts
 1,明るくほほ笑みながら，クリスはその幼い男の子に話しかけた．,"Smiling brightly, Chris spoke to the little boy.","spoke=>talked|Chris spoke to the little boy, smiling brightly."
 2,その生徒（男）は手をあげて，起立した．,"Raising his hand, the student stood up.",※前後関係を表す場合、前の動作が前
-3,私を見かけると，彼女は手を振った．,"Seeing me, she waved her hand.",
-4,彼は疲れていたので，少し休んだ．,"Feeling tired, he took a short rest.",
+3,私を見かけると，彼女は手を振った．,"Seeing me, she waved her hand.",hand=>hands
+4,彼は疲れていたので（疲れを感じていたので），少し休んだ．,"Feeling tired, he took a short rest.",※breakは活動を一時的に中断する場合
 5,何を言ったらよいかわからなかったので，彼は黙っていた．,"Not knowing what to say, he remained silent.",remained=>kept
 6,平易な英語で書かれているので，その本は読みやすい．,"Written in plain English, the book is easy to read.",plain=>simple
 7,私たちは夕食をすませてから，チェスをした．,"Having had dinner, we played chess.",had=>eaten
 8,母が病気だったので，私が母の世話をした．,"My mother being sick, I took care of her.",sick=>ill
 9,一般的に言えば，日本の電車は時間通りに運行する．,"Generally speaking, trains in Japan run on time.",
-10,（「ついさっき，ボブに会ったよ．」に対して。）ボブと言えば，明日が誕生日だね．,"Speaking of Bob, tomorrow is his birthday.",
+10,（「ついさっき，ボブに会ったよ．」に対して。）ボブと言えば，明日が誕生日だね．,"Speaking of Bob, tomorrow is his birthday.",tomorrow is his birthday=>it is his birthday tomorrow|tomorrow is his birthday=>it's his birthday tomorrow
 11,母は水を流したままで台所を離れた．,My mother left the kitchen with the water running.,
 12,トムは(両)袖をまくり上げて仕事をしていた．,Tom was working with his sleeves rolled up.,
